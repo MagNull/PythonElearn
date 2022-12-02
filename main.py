@@ -484,5 +484,5 @@ if __name__ == '__main__':
     statistics = ds.GetData()
     report = Report(statistics)
     report.GeneratePdf('report.pdf')
-    report.GenerateExcel('report.xlsx')
+    report.GenerateExcel('repo rt.xlsx')
     report.GenerateImage('graph.png')
