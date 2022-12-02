@@ -483,6 +483,6 @@ if __name__ == '__main__':
     ds = DataSet(vacancies, ui.profession_name)
     statistics = ds.GetData()
     report = Report(statistics)
-    report.GeneratePdf('report.pdf')
+    report.GeneratePdf('repo1rt.pdf')
     report.GenerateExcel('report.xlsx')
     report.GenerateImage('graph.png')
