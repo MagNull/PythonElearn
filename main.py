@@ -1,26 +1,44 @@
 from csv import reader as csv_reader
 from re import sub
 from typing import List
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pdfkit
+from jinja2 import Environment, FileSystemLoader
 from openpyxl import Workbook
 from openpyxl.styles import Font, Border, Side
 from openpyxl.styles.numbers import FORMAT_PERCENTAGE_00
-import matplotlib.pyplot as plt
-import numpy as np
-from jinja2 import Environment, FileSystemLoader
-import pdfkit
 
 
 def CustomQuit(msg: str) -> None:
+    """Выход из программы с выводом сообщения на консоль.
+        :param msg: Сообщение, выводимое на консоль.
+        """
     print(msg)
     quit()
 
 
 class CSV:
+    """Класс для чтения и обработки CSV-файлов.
+        Attributes
+        ----------
+        data : csv.reader
+            Данные, полученные после прочтения CSV-файла при помощи функции reader библиотеки csv.
+        title : list
+            Список заголовков столбцов CSV-файла.
+        rows : list
+            Список строк с данными о вакансии. 1 строка = 1 вакансия.
+        """
     data: csv_reader
     title: list
     rows: list
 
     def __init__(self, file_name: str):
+        """Инициализирует объект CSV, пытается прочесть файл с переданным именем. Обрабатывает случаи пустого файла и
+                отсутствия данных в файле.
+                :param file_name: Путь до CSV-файла.
+                """
         with open(file_name, 'r', newline='', encoding='utf-8-sig') as file:
             self.data = csv_reader(file)
             try:
@@ -36,6 +54,9 @@ class CSV:
 
 
 class Translator:
+    """Класс для перевода валюты из международного формата на русский язык и с русского языка в числовой формат по
+            заранее установленному курсу.
+        """
     AZN: str = "Манаты"
     BYR: str = "Белорусские рубли"
     EUR: str = "Евро"
@@ -60,19 +81,38 @@ class Translator:
     }
 
     def Translate(self, key: str, dict_name: str = None) -> str:
+        """Переводит из международного формата на русский язык. Если было передано имя словаря, возвращает из него
+                значение по ключу.
+                :param key: Международный формат валюты или название словаря.
+                :param dict_name: Имя словаря, существующего в аттрибутах класса (на данный момент нет доступных).
+                """
         if dict_name is not None:
             return self.__getattribute__(dict_name)[key]
         return self.__getattribute__(key)
 
     def TranslateCurrencyToRub(self, currency: str) -> int or float:
+        """Возвращает фиксированный курс, принимая валюту, написанную по-русски.
+                :param currency: Валюта на русском языке.
+                """
         return self.currency_to_rub[currency]
 
 
 class UserInterface:
+    """Класс обработки ввода пользовательских данных.
+        Attributes
+        ----------
+        file_name : str
+            Путь до CSV-файла.
+        profession_name : str
+            Название профессии, введённое пользователем.
+        """
     file_name: str
     profession_name: str
 
     def __init__(self, file_name: str = None):
+        """Инициализирует объект UserInterface, принимает название CSV-файла.
+                :param file_name: Путь до CSV-файла.
+                """
         if file_name is not None:
             self.file_name = file_name
         else:
@@ -81,11 +121,26 @@ class UserInterface:
 
 
 class Salary:
+    """Класс для предоставления зарплаты.
+        Attributes
+        ----------
+        salary_from : int
+            Нижняя граница вилки оклада
+        salary_to : int
+            Верхняя граница вилки оклада
+        salary_currency : str
+            Валюта оклада на русском языке
+        """
     salary_from: int
     salary_to: int
     salary_currency: str
 
     def SetField(self, key: str, value: str):
+        """Устанавливает поле зарплаты, значение по ключу.
+                    :param key: Название поля.
+                    :param value: Значение поля. Валюта переводится из международного формата на русский язык.
+                        Числовые значения приводятся к int.
+                """
         if key == 'salary_currency':
             value = translator.Translate(value)
         if key in ['salary_from', 'salary_to']:
@@ -93,27 +148,55 @@ class Salary:
         self.__setattr__(key, value)
 
     def GetAverageInRur(self) -> int:
+        """Вычисляет среднюю зарплату из вилки и переводит в рубли при помощи словаря - currency_to_rub.
+                Returns:
+                    int: Средняя зарплата в рублях
+                """
         return int(translator.TranslateCurrencyToRub(self.salary_currency) *
                    (float(self.salary_from) + float(self.salary_to)) // 2)
 
 
 class Vacancy:
+    """Класс вакансии используется для обработки данных о вакансиях из CSV-файлов.
+        Attributes
+        ----------
+        name : str
+            Название вакансии
+        salary : Salary
+            Вилка и валюта оклада
+        area_name : str
+            Название населённого пункта
+        published_at : int
+            Время публикации в формате - год.
+        """
     name: str
     salary: Salary
     area_name: str
     published_at: int
 
     def __init__(self, fields: dict):
+        """Инициализирует класс вакансии, используя переданные поля.
+                :param fields: Словарь с полями вакансии. Доступные ключи - name, salary_from, salary_to, salary_currency,
+                area_name, published_at
+                """
         for key, value in fields.items():
             if not self.CheckSalary(key, value):
                 self.__setattr__(key, self.GetCorrectField(key, value))
 
     def GetField(self, field: str):
+        """Возвращает значение поля вакансии по ключу.
+                :param field: Название поля вакансии.
+                """
         if field in 'salary':
             return self.salary.GetAverageInRur()
         return self.__getattribute__(field)
 
     def CheckSalary(self, key: str, value: str) -> bool:
+        """Проверяет и устанавливает поле Salary, если его ещё нет
+                :param key: Название поля зарплаты, такое как salary_from, salary_to, salary_currency.
+                :param value: Значение поля зарплаты, числовое значение или международный формат валюты.
+                :returns: Возвращает True, если название поля относится к зарплате.
+                """
         is_salary = False
         if key in ['salary_from', 'salary_to', 'salary_currency']:
             if not hasattr(self, 'salary'):
@@ -124,6 +207,10 @@ class Vacancy:
 
     @staticmethod
     def GetCorrectField(key: str, value: str or list) -> int or str:
+        """Возвращает отформатированное поле вакансии. Сейчас форматирует только поле published_at.
+                :param key: Название поля вакансии.
+                :param value: Значение поля вакансии. Дату в формате YY-MM-DDTHH:MM:SS+MS преобразует в год в числовом формате.
+                """
         if key == 'published_at':
             big, small = value[:19].split('T')
             year, month, day = big.split('-')
@@ -133,10 +220,21 @@ class Vacancy:
 
 
 class Report:
+    """Класс формирования отчёта по данным из DataSet.
+        Attributes
+        ----------
+        workbook : Workbook
+            Класс, содержащий в себе функционал для работы с Excel таблицей.
+        data : dict
+            Словарь данных, получаемый из DataSet.
+        """
     workbook: Workbook
     data: dict
 
     def __init__(self, data: dict, **kwargs):
+        """Инициализирует объект Report. Создаёт пустой Workbook, распаковывает kwargs.
+                :param data: Словарь с данными из DataSet.
+                """
         self.workbook = Workbook()
         self.data = data
         for key, value in kwargs.items():
@@ -144,14 +242,20 @@ class Report:
 
     # region Excel
     def GenerateExcel(self, file_name: str) -> None:
+        """Генерирует и сохраняет Excel-файл.
+                :param file_name: название Excel-файла с явно указанным расширением.
+                """
         self.FillWithStatistics()
         self.workbook.save(file_name)
 
     def FillWithStatistics(self) -> None:
+        """Заполняет два листа Excel-файла статистикой."""
         self.FillSalariesStatistics()
         self.FillCitiesStatistics()
 
     def FillSalariesStatistics(self) -> None:
+        """Заполняет первую страницу данными о годах, зарплатах и количествах вакансий.
+                """
         ws = self.workbook.active
         ws.title = 'Статистика по годам'
         salaries_by_years = self.data["Уровень зарплат по годам"][0]
@@ -175,6 +279,7 @@ class Report:
         self.UpdateWorksheetSettings(ws)
 
     def FillCitiesStatistics(self) -> None:
+        """Создаёт и переключается на второй лист Excel-файла. Заполняет его данными о городах и зарплатах."""
         self.workbook.create_sheet("Статистика по городам")
         ws = self.workbook["Статистика по городам"]
         salaries_by_cities = self.data["Уровень зарплат по городам"]
@@ -195,21 +300,34 @@ class Report:
 
     @staticmethod
     def FillColumn(header: str, data: list, column_cells: list) -> None:
+        """Заполняет столбец данными.
+                :param header: Заголовок столбца, записывается в первой ячейке из списка клеток.
+                :param data: Данные для записи в клетки.
+                :param column_cells: Список клеток, в которые будут записаны данные.
+                """
         column_cells[0].value = header
         for cell, value in zip(column_cells[1:], data):
             cell.value = value
 
     @staticmethod
     def SetColumnPercent(column: list) -> None:
+        """Устанавливает процентный формат для всех ячеек в этом столбце.
+                """
         for cell in column:
             cell.number_format = FORMAT_PERCENTAGE_00
 
     def UpdateWorksheetSettings(self, ws) -> None:
+        """Устанавливает границы и ширины для страницы Excel-файла.
+                :param ws: страница Excel-файла.
+                """
         self.SetBorders(ws)
         self.SetColumnWidth(ws)
 
     @staticmethod
     def SetBorders(ws) -> None:
+        """Устанавливает границы для всех непустых клеток и жирный шрифт для заголовков столбцов.
+                :param ws: страница Excel-файла.
+                """
         isFirstRow = True
         for row in ws.rows:
             for cell in row:
@@ -225,6 +343,9 @@ class Report:
 
     @staticmethod
     def SetColumnWidth(ws) -> None:
+        """Устанавливает ширину столбца, ориентируясь на максимально большую ячейку в нём.
+                :param ws: страница Excel-файла.
+                """
         a = {0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 6: "F", 7: "G"}
         dims = {}
         for row in ws.rows:
@@ -239,6 +360,10 @@ class Report:
     # region Plot
 
     def GenerateImage(self, file_name: str, show_result: bool = False) -> None:
+        """Генерирует и сохраняет изображение с графиками, на основе данных data.
+                :param file_name: Название для сохранения изображения.
+                :param show_result: Показывать ли изображение после генерации. По-умолчанию False.
+                """
         self.DrawGraphs()
         plt.tight_layout()
         plt.savefig(file_name, dpi=300)
@@ -246,6 +371,8 @@ class Report:
             plt.show()
 
     def DrawGraphs(self) -> None:
+        """Рисует 4 графика на сетке 2x2. Каждый график строится на основании данных каждого ключа из data.
+                """
         figure, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
         self.DrawBarGraph(ax1, "Уровень зарплат по годам")
         self.DrawBarGraph(ax2, "Количество вакансий по годам")
@@ -253,6 +380,10 @@ class Report:
         self.DrawPieGraph(ax4, "Доля вакансий по городам")
 
     def DrawBarGraph(self, subplot, name: str) -> None:
+        """Рисует столбчатую диаграмму.
+                :param subplot: Подобласть для отрисовки графика.
+                :param name: Название графика. Должен соответствовать ключу из data.
+                """
         bar_width = 0.4
         first_label = 'средняя з/п'
         second_label = f'з/п {ui.profession_name}'
@@ -277,6 +408,10 @@ class Report:
         subplot.legend(fontsize=8)
 
     def DrawInvertBarGraph(self, subplot, name: str) -> None:
+        """Рисует повёрнутую на левый бок столбчатую диаграмму.
+                :param subplot: Подобласть для отрисовки графика.
+                :param name: Название графика. Должен соответствовать ключу из data.
+                """
         subplot.invert_yaxis()
         courses = list(self.data[name].keys())
         courses = [label.replace(' ', '\n').replace('-', '-\n') for label in courses]
@@ -289,6 +424,10 @@ class Report:
         subplot.tick_params(axis='both', labelsize=8)
 
     def DrawPieGraph(self, subplot, name: str) -> None:
+        """Рисует круговую диаграмму.
+                :param subplot: Подобласть для отрисовки графика.
+                :param name: Название графика. Должен соответствовать ключу из data.
+                """
         data = self.data[name]
         other = 1 - sum((list(data.values())))
         new_dic = {'Другие': other}
@@ -305,6 +444,9 @@ class Report:
     # region PDF
 
     def GeneratePdf(self, name: str):
+        """Генерирует PDF-файл на основании данных из DataSet - data и разметки PDF - pdf_template.html.
+                :param name: Название сохраняемого PDF-файла с явно указанным расширением.
+                """
         image_file = "graph.png"
         header_year = ["Год", "Средняя зарплата", f"Средняя зарплата - {ds.profession_name}", "Количество вакансий",
                        f"Количество вакансий - {ds.profession_name}"]
@@ -354,6 +496,30 @@ class Report:
 
 
 class DataSet:
+    """Класс хранилища данных о вакансиях.
+        Attributes
+        ----------
+        profession_name : str
+            Название профессии, введённой пользователем.
+        profession_count : int
+            Количество профессий, содержащих в своём названии profession_name.
+        vacancies : List[Vacancy]
+            Список вакансий.
+        salary_by_years : {int, list}
+            Год: средняя зарплата среди всех вакансий за этот период.
+        vacancies_by_years : {int, int}
+            Год: общее количество вакансий за этот период.
+        profession_salary_by_years : {int, list}
+            Год: средняя зарплата среди вакансий, содержащих в своём названии profession_name, за этот период.
+        profession_vacancies_by_years : {int, int}
+            Год: количество вакансий, содержащих в своём названии profession_name, за этот период.
+        salaries_by_cities : {str, list}
+            Название города: [сумма всех зарплат вакансий в этом городе, количество вакансий в этом городе].
+        ratio_vacancy_by_cities : {str, float}
+            Название города: доля количества вакансий в этом городе к общему количеству вакансий.
+        city_vacancies_count : {str, int}
+            Название города: количество вакансий в этом городе.
+        """
     profession_name: str
     profession_count: int
     vacancies: List[Vacancy]
@@ -380,6 +546,7 @@ class DataSet:
         self._GetData()
 
     def _GetData(self) -> None:
+        """Обрабатывает данные вакансий из инициализированного списка"""
         for vac in self.vacancies:
             self.ProcessVacanciesCount('city_vacancies_count', 'area_name', vac)
         for vac in self.vacancies:
@@ -395,6 +562,12 @@ class DataSet:
         self.SetCorrectCitiesData()
 
     def ProcessSalary(self, dict_name: str, field: str, vac: Vacancy) -> None:
+        """Обрабатывает поля, связанные с зарплатой вакансии, заполняя словарь, имя которого было передано.
+                :param dict_name: Название словаря этого объекта.
+                :param field: Поле вакансии, которое будет обрабатываться.
+                :param vac: Экземпляр вакансии.
+                :return:
+                """
         d = self.__getattribute__(dict_name)
         f = vac.GetField(field)
         if f not in d.keys():
@@ -404,6 +577,9 @@ class DataSet:
             d[f][1] += 1
 
     def SetCorrectCitiesData(self):
+        """Обрабатывает словари, связанные с данными по городам. Сортирует словари по значениям - средней зарплате
+                и доле вакансии в городе. Наибольшие значения идут первыми.
+                """
         for key, value in self.ratio_vacancy_by_cities.items():
             self.ratio_vacancy_by_cities[key] = round(value / len(self.vacancies), 4)
 
@@ -414,6 +590,12 @@ class DataSet:
         self.ratio_vacancy_by_cities = self.GetFirstTenCorrect(d2)
 
     def ProcessVacanciesCount(self, dict_name: str, field: str, vac: Vacancy) -> None:
+        """Обрабатывает поля, связанные с количеством вакансий, заполняя словарь, имя которого было передано.
+                :param dict_name: Название словаря этого объекта.
+                :param field: Поле вакансии, которое будет обрабатываться.
+                :param vac: Экземпляр вакансии.
+                :return:
+                """
         d = self.__getattribute__(dict_name)
         f = vac.GetField(field)
         if f not in d.keys():
@@ -422,6 +604,8 @@ class DataSet:
             d[f] += 1
 
     def GetFirstTenCorrect(self, d: dict) -> dict:
+        """Оставляет в словаре только первые 10 значений, удовлетворяющих условию - больше 1% вакансий в городе от
+                общего числа вакансий."""
         count = 0
         res = {}
         for key, value in d.items():
@@ -433,6 +617,12 @@ class DataSet:
         return res
 
     def GetData(self) -> dict:
+        """Обрабатывает полученные данные.
+                :returns: "Уровень зарплат по годам": {год: средняя зарплата за этот период},
+                          "Количество вакансий по годам": {год: общее количество вакансий за этот период},
+                          "Уровень зарплат по городам": {город: средняя зарплата},
+                          "Доля вакансий по городам": {доля вакансий от общего количества вакансий}.
+                          Для статистики по городам возвращается только 10 городов с наибольшими значениями."""
         salaries_by_years, vacancies_by_years = [], []
         salaries_by_cities, ratio_vacancies_by_cities = {}, {}
         to_print: {str, dict} \
@@ -463,15 +653,22 @@ class DataSet:
                 "Доля вакансий по городам": ratio_vacancies_by_cities}
 
 
-
 def GetParsedRowVacancy(row_vacs: list) -> dict:
+    """Очищает строки от HTML-тегов и разбивает её на данные для вакансии.
+        :param header: список заголовков из CSV-файла.
+        :param row_vacs: список строк, прочитанных из CSV-файла.
+        """
     return dict(zip(title, map(GetParsedString, row_vacs)))
 
 
 def GetParsedString(line: str) -> str:
+    """Убирает HTML-теги из строки.
+        :param line: Строка для обработки.
+        :returns: Возвращает строку без HTML-тегов.
+        """
     line = sub('<.*?>', '', line)
     res = [' '.join(word.split()) for word in line.replace("\r\n", "\n").split('\n')]
-    return res[0] if len(res) == 1 else res  # Спасибо Яндекс.Контесту за еще один костыль!
+    return res[0] if len(res) == 1 else res
 
 
 if __name__ == '__main__':
